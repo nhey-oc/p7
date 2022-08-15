@@ -36,6 +36,7 @@ from lightgbm import LGBMClassifier
 import xgboost as xgb
 from sklearn.metrics import fbeta_score, make_scorer
 
+import shap
 
 @contextmanager
 def timer(title):
@@ -45,15 +46,6 @@ def timer(title):
     print(" - done in {:.0f}s".format(time.time() - t0))
     print("End of", title)
     print("---------------------------")
-
-
-def SVC_model(C, X_train, y_train, X_test, y_test):
-    # C: SVC hyper parameter to optimize for.
-    model = SVC(C = C)
-    model.fit(X_train, y_train)
-    y_score = model.decision_function(X_test)
-    f = roc_auc_score(y_test, y_score)
-    return f
 
 
 def fillna_fun(df, target_name='TARGET', threshold=10):
@@ -90,7 +82,7 @@ def fillna_fun(df, target_name='TARGET', threshold=10):
 def extract_x_y(df):
     # Divide in training/test data
     train_df = df[df['TARGET'].notnull()]
-    test_df = df[df['TARGET'].isnull()]
+    #test_df = df[df['TARGET'].isnull()]
 
     # Set X and y
     X = train_df.drop('TARGET', axis=1)
@@ -141,8 +133,7 @@ def LGBMCla_train(X, y, stratified = False, num_folds=2, need_fillna=True):
         i+=1
         print(i, "/", nb_comb, sep="")
         # Declare the model
-        clf =
-        (**params)
+        clf = LGBMClassifier(**params)
 
         score = np.mean(cross_val_score(clf, X, y, cv=5, scoring='roc_auc'))
 
@@ -231,18 +222,6 @@ def XGBClassifier_train(X, y):
     return {"mehtod": "XGB", "best_score": best_score, "params": best_params}
 
 
-def GBCla_train(X, y):
-    # Preset the hyper-params.
-    param_grid = ParameterGrid(
-                        {
-                            "n_estimators": [25, 100, 250],
-                            "learning_rate": [0.1, 0.01, 0.001],
-                            "max_depth": [1, 5, 10]
-                        }
-                    )
-    clf = GradientBoostingClassifier(n_estimators=100, learning_rate=1.0,
-                                     max_depth=1, random_state=42)
-
 
 def TSNE_visu_fct(X_tsne, y_cat_num, labels, score=None, method=None):
     """
@@ -321,73 +300,175 @@ def undersampling_with_centroids(X, y):
     return X_resampled, y_resampled
 
 
+def proceed_to_undersample(X, y, undersampling_method = "random"):
+
+    if undersampling_method == "centroids":
+        # Deal with centroids undersampling
+        with timer("undersampling_with_centroids"):
+            X_undersampled, y_undersampled = undersampling_with_centroids(X, y)
+
+    elif undersampling_method == "random":
+        # Deal with random undersampling
+        with timer("random_undersampling"):
+            X_undersampled, y_undersampled = random_undersampling(X, y)
+
+    return X_undersampled, y_undersampled
+
+
 def main(need_fillna=True):
     print("Start of the script.")
 
-    # Read the dataframe
+    #######################################
+    # Read the full pretreated dataframe. #
+    #######################################
+
     df = pd.read_pickle('dataframes/df.pkl')
     print("The pretreatment is done with the Kaggle kernel : https://www.kaggle.com/code/jsaguiar/lightgbm-with-simple-features/script")
     print("The size of the dataframe is :", df.shape)
 
-    # Manage NaNs
+    ################
+    # Manage NaNs. #
+    ################
+
     print("For some Classifier models I need to manage NaNs.")
+
     if need_fillna:
         with timer("Fillna"):
             df_filled = fillna_fun(df, threshold=25)
-        df_filled.to_pickle('dataframes/df_fillna.pkl')
+            df_filled.to_pickle('dataframes/df_fillna.pkl')
     else:
         df_filled = pd.read_pickle('dataframes/df_fillna.pkl')
     print("Size of the dataframe after NaNs remove is", df_filled.shape)
+
+    #########################################
+    # Separate X from y for each dataframe. #
+    #########################################
+
+    X, y = extract_x_y(df)
+    X_filled, y_filled = extract_x_y(df_filled)
+
+    #################################
+    # Start of deal with unbalance. #
+    #################################
+
+    undersampling_needed = True
+
+    if undersampling_needed:
+            X_filled_random_undersampled,\
+            y_filled_random_undersampled = proceed_to_undersample(X_filled,
+                                                                  y_filled,
+                                                                  undersampling_method="random")
+            with open('dataframes/X_filled_random_undersampled.pkl', 'wb') as f:
+                pickle.dump(X_filled_random_undersampled, f)
+            with open('dataframes/y_filled_random_undersampled.pkl', 'wb') as f:
+                pickle.dump(y_filled_random_undersampled, f)
+
+            X_filled_centroids_undersampled, \
+            y_filled_centroids_undersampled = proceed_to_undersample(X_filled,
+                                                                  y_filled,
+                                                                  undersampling_method="centroids")
+            with open('dataframes/X_filled_centroids_undersampled.pkl', 'wb') as f:
+                pickle.dump(X_filled_centroids_undersampled, f)
+            with open('dataframes/y_filled_centroids_undersampled.pkl', 'wb') as f:
+                pickle.dump(y_filled_centroids_undersampled, f)
+
+    else:
+        with open('dataframes/X_filled_random_undersampled.pkl', 'rb') as f:
+            X_filled_random_undersampled = pickle.load(f)
+        with open('dataframes/y_filled_random_undersampled.pkl', 'rb') as f:
+            y_filled_random_undersampled = pickle.load(f)
+
+        with open('dataframes/X_filled_centroids_undersampled.pkl', 'rb') as f:
+            X_filled_centroids_undersampled = pickle.load(f)
+        with open('dataframes/y_filled_centroids_undersampled.pkl', 'rb') as f:
+            y_filled_centroids_undersampled = pickle.load(f)
+
+    print("New shape with undersampling method is : X : ",
+          X_filled_random_undersampled.shape,
+          "  y : ",
+          y_filled_random_undersampled.shape,
+          sep="")
 
     #############################
     # Start of training models. #
     #############################
 
-    X, y = extract_x_y(df)
-    X_filled, y_filled = extract_x_y(df_filled)
+    results = dict()
 
-    #with timer("undersampling_with_centroids"):
-    #    X_filled_under, y_filled_under = undersampling_with_centroids(X_filled, y_filled)
-    #with timer("random_undersampling"):
-    #    X_filled_under, y_filled_under = random_undersampling(X_filled, y_filled)
+    # Trying the 3 models with default params
+
+    SVC_clf = SVC()
+    SVC_score = np.mean(cross_val_score(SVC_clf,
+                                        X_filled_undersampled,
+                                        y_filled_undersampled,
+                                        cv=5,
+                                        scoring='roc_auc'))
+    results['SVC'] = SVC_score
+    print("SVC default score is : ", SVC_score)
+
+    XGBC_clf = xgb.XGBClassifier()
+    XGBC_score = np.mean(cross_val_score(XGBC_clf,
+                                         X_filled_undersampled,
+                                         y_filled_undersampled,
+                                         cv=5,
+                                         scoring='roc_auc'))
+    results['XGB'] = XGBC_score
+    print("XGB default score is : ", XGBC_score)
+
+    #LGBMC_clf = LGBMClassifier()
+    #LGBMC_all_datas_score = np.mean(cross_val_score(LGBMC_clf,
+    #                                                X,
+    #                                                y,
+    #                                                cv=5,
+    #                                                scoring='roc_auc'))
+    #results['LGBMC all datas'] = LGBMC_all_datas_score
+    #print("Light GBMC default score is : ", LGBMC_score)
+
+    LGBMC_clf = LGBMClassifier()
+    LGBMC_all_datas_score = np.mean(cross_val_score(LGBMC_clf,
+                                                    X_filled_undersampled,
+                                                    y_filled_undersampled,
+                                                    cv=5,
+                                                    scoring='roc_auc'))
+    results['LGBM'] = LGBMC_all_datas_score
+    print("Light GBM default score is : ", LGBMC_score)
+
+    best_method = max(results, key=results.get)
 
 
-    #with open('dataframes/X_filled_under.pkl', 'wb') as f:
-    #    pickle.dump(X_filled_under, f)
-    #with open('dataframes/y_filled_under.pkl', 'wb') as f:
-    #    pickle.dump(y_filled_under, f)
 
-    with open('dataframes/X_filled_under.pkl', 'rb') as f:
-        X_filled_under = pickle.load(f)
-    with open('dataframes/y_filled_under.pkl', 'rb') as f:
-        y_filled_under = pickle.load(f)
+    if best_method == "SVC":
+        with timer("SVC Classifier"):
+            score_and_params = SVCCla_train(X_filled_undersampled, y_filled_undersampled)
+            SVC_model = SVC(**score_and_params["params"])
+            SVC_model.fit(X_filled_undersampled, y_filled_undersampled)
+            with open('SVC_model.pkl', 'wb') as f:
+                pickle.dump(SVC_model, f)
+            model = SVC_model
 
-    results = list()
+    elif best_method == "XGB":
+        with timer("XGB Classifier"):
+            score_and_params = XGBClassifier_train(X_filled_undersampled, y_filled_undersampled)
+            XGB_model = SVC(**score_and_params["params"])
+            XGB_model.fit(X_filled_undersampled, y_filled_undersampled)
+            with open('XGB_model.pkl', 'wb') as f:
+                pickle.dump(XGB_model, f)
+            model = XGB_model
 
+    elif best_method == "LGBM":
+        with timer("LGBMClassifier"):
+            score_and_params = LGBMCla_train(X_filled_undersampled, y_filled_undersampled)
+            LGBM_model= LGBMClassifier(**score_and_params["params"])
+            LGBM_model.fit(X_filled_undersampled, y_filled_undersampled)
+            with open('LGBM_model.pkl', 'wb') as f:
+                pickle.dump(LGBM_model, f)
+            model = LGBM_model
 
-    with timer("XGB Classifier"):
-        results.append(XGBClassifier_train(X_filled_under, y_filled_under))
-        XGB_model = SVC(**results[-1]["params"])
-        XGB_model.fit(X_filled_under, y_filled_under)
-        with open('XGB_model.pkl', 'wb') as f:
-            pickle.dump(XGB_model, f)
+    partition_explainer = shap.PartitionExplainer(model, X_filled_undersampled)
 
-    #with timer("SVC Classifier"):
-    #    results.append(SVCCla_train(X_filled, y_filled))
-    #    SVC_model = SVC(**results[-1]["params"])
-    #    SVC_model.fit(X_filled, y_filled)
-    #    with open('SVC_model.pkl', 'wb') as f:
-    #        pickle.dump(SVC_model, f)
-
-    #with timer("LGBMClassifier"):
-    #    results.append(LGBMCla_train(X, y))
-    #    LGBM_model= LGBMClassifier(**results[-1]["params"])
-    #    LGBM_model.fit(X, y)
-    #    with open('LGBM_model.pkl', 'wb') as f:
-    #        pickle.dump(LGBM_model, f)
-
-    # Retrain best method and save the fitted classifer.
-
+    shap.bar_plot(partition_explainer.shap_values(X_filled_undersampled[0]),
+              feature_names=df.columns,
+              max_display=12)
 
 if __name__ == "__main__":
     main(need_fillna=False)
