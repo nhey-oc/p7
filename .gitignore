@@ -1,0 +1,6 @@
+.ipynb_checkpoints/*
+test_csv_size.ipynb
+datas/
+dataframes/
+models/
+P7_env/
