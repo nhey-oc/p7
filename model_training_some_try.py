@@ -6,6 +6,7 @@ import time
 import matplotlib.pyplot as plt
 import os
 import re
+import requests
 
 # Kaggle kernel import
 from contextlib import contextmanager
@@ -342,8 +343,14 @@ def main(need_fillna=True):
     #########################################
     # Separate X from y for each dataframe. #
     #########################################
-
     X, y = extract_x_y(df)
+
+
+    response = requests.post('http://127.0.0.1:8000/predict', json=[0]*len(X.columns))
+    print(response.content)
+
+
+    flute
     X_filled, y_filled = extract_x_y(df_filled)
 
     #################################
@@ -466,7 +473,6 @@ def main(need_fillna=True):
     elif best_method == "LGBMC all datas":
         with timer("LGBMClassifier all datas"):
             score_and_params = LGBMCla_train(X, y)
-            print(score_and_params)
             LGBM_model= LGBMClassifier(**score_and_params["params"])
             LGBM_model.fit(X_filled_undersampled, y_filled_undersampled)
             with open('models/LGBM_model.pkl', 'wb') as f:
