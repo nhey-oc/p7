@@ -349,9 +349,9 @@ def main(need_fillna=False):
         if X[col].isna().sum() > 0:
             for i in range(0, len(X)):
                 if X[col].iloc[i] != None:
-                    if isinstance(type(X[col].iloc[i]), (np.floating, float)):
+                    if isinstance(X[col].iloc[i], (np.floating, float)):
                         type_is = "float"
-                    elif isinstance(type(X[col].iloc[i]), (np.integer, int)):
+                    elif isinstance(X[col].iloc[i], (np.integer, int)):
                         type_is = "int"
                     else:
                         print(type(X[col].iloc[i]))
@@ -359,16 +359,17 @@ def main(need_fillna=False):
                     print(col, ': Union[', type_is, ', None]', sep='', end='\n')
                     break
         else:
-            if isinstance(type(X[col].iloc[i]), (np.floating, float)):
+            if isinstance(X[col].iloc[0], (np.floating, float, type(0.1))):
                 type_is = "float"
-            elif isinstance(type(X[col].iloc[i]), (np.integer, int)):
+            elif isinstance(X[col].iloc[0], (np.integer, int, type(1))) :
                 type_is = "int"
 
             else:
-                print(type(X[col].iloc[i]))
-                flute
+                print(X[col].iloc[0], 'FUCK')
+                print(type(X[col].iloc[0]))
             print(col, ': [', type_is, ']', sep='', end='\n')
     print('\n\n')
+    flute
     print(X.info())
 
     response = requests.post('http://127.0.0.1:8000/predict', msg=X.iloc[0].to_json())
