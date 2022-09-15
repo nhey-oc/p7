@@ -14,19 +14,30 @@ app = FastAPI()
 with open('models/LGBM_model.pkl', 'rb') as f:
     LGBM_model = pickle.load(f)
 
+# 2. Class which describes a single flower measurements
+class bank_model(BaseModel):
+    # https://fastapi.tiangolo.com/python-types/
+    test: Optional[str] = None
+    test2 : Union[SomeType, None]
+
+
 # 3. Index route, opens automatically on http://127.0.0.1:8000
 @app.get('/')
 def index():
     return {'message': 'Hello you.'}
 
 
-# 3. Expose the prediction functionality, make a prediction from the passed
-#    JSON data and return the predicted Bank Note with the confidence
+
+# 3.
 @app.post('/predict')
 
-def predict(json_data):
-    print('test')
-    prediction = LGBM_model.predict([json_data])
+def predict(json_data: bank_model):
+
+    data_dict = dict(json_data)
+    data = pd.DataFrame.from_dict(data_dict)
+
+    prediction = LGBM_model.predict([data.iloc[0]])
+    # BE CAREFUL, I think it return only 0 or 1. To verify.
     if(prediction[0]>0.5):
         prediction=1
     else:

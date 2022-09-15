@@ -315,7 +315,7 @@ def proceed_to_undersample(X, y, undersampling_method = "random"):
     return X_undersampled, y_undersampled
 
 
-def main(need_fillna=True):
+def main(need_fillna=False):
     print("Start of the script.")
 
     #######################################
@@ -345,8 +345,33 @@ def main(need_fillna=True):
     #########################################
     X, y = extract_x_y(df)
 
+    for col in X:
+        if X[col].isna().sum() > 0:
+            for i in range(0, len(X)):
+                if X[col].iloc[i] != None:
+                    if isinstance(type(X[col].iloc[i]), (np.floating, float)):
+                        type_is = "float"
+                    elif isinstance(type(X[col].iloc[i]), (np.integer, int)):
+                        type_is = "int"
+                    else:
+                        print(type(X[col].iloc[i]))
+                        flute
+                    print(col, ': Union[', type_is, ', None]', sep='', end='\n')
+                    break
+        else:
+            if isinstance(type(X[col].iloc[i]), (np.floating, float)):
+                type_is = "float"
+            elif isinstance(type(X[col].iloc[i]), (np.integer, int)):
+                type_is = "int"
 
-    response = requests.post('http://127.0.0.1:8000/predict', json=[0]*len(X.columns))
+            else:
+                print(type(X[col].iloc[i]))
+                flute
+            print(col, ': [', type_is, ']', sep='', end='\n')
+    print('\n\n')
+    print(X.info())
+
+    response = requests.post('http://127.0.0.1:8000/predict', msg=X.iloc[0].to_json())
     print(response.content)
 
 

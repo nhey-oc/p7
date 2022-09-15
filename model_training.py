@@ -473,12 +473,12 @@ def main(need_fillna=True):
                 pickle.dump(LGBM_model, f)
             model = LGBM_model
 
+
     partition_explainer = shap.PartitionExplainer(model, X_filled_undersampled)
 
     shap.bar_plot(partition_explainer.shap_values(X_filled_undersampled[0]),
               feature_names=df.columns,
               max_display=12)
-
 
 
 if __name__ == "__main__":
