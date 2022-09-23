@@ -202,6 +202,8 @@ def XGBClassifier_train(X, y):
 
     fb_score = make_scorer(fbeta_score, beta=3)
 
+
+
     i=0
     for params in param_grid:
         i+=1
@@ -345,35 +347,49 @@ def main(need_fillna=False):
     #########################################
     X, y = extract_x_y(df)
 
-    for col in X:
-        if X[col].isna().sum() > 0:
-            for i in range(0, len(X)):
-                if X[col].iloc[i] != None:
-                    if isinstance(X[col].iloc[i], (np.floating, float)):
-                        type_is = "float"
-                    elif isinstance(X[col].iloc[i], (np.integer, int)):
-                        type_is = "int"
-                    else:
-                        print(type(X[col].iloc[i]))
-                        flute
-                    print(col, ': Union[', type_is, ', None]', sep='', end='\n')
-                    break
-        else:
-            if isinstance(X[col].iloc[0], (np.floating, float, type(0.1))):
-                type_is = "float"
-            elif isinstance(X[col].iloc[0], (np.integer, int, type(1))) :
-                type_is = "int"
+    X.to_pickle('dataframes/X.pkl')
+    y.to_pickle('dataframes/y.pkl')
 
+
+    X = pd.read_pickle('dataframes/X_filled_random_undersampled.pkl')
+    y = pd.read_pickle('dataframes/y_filled_random_undersampled.pkl')
+
+    print_cols = False
+
+    if print_cols:
+        for col in X:
+            if X[col].isna().sum() > 0:
+                for i in range(0, len(X)):
+                    if X[col].iloc[i] != None:
+                        if isinstance(X[col].iloc[i], (np.floating, float)):
+                            type_is = "float"
+                        elif isinstance(X[col].iloc[i], (np.integer, int)):
+                            type_is = "int"
+                        else:
+                            print(type(X[col].iloc[i]))
+                            flute
+                        print(col, ': Union[', type_is, ', None]', sep='', end='\n')
+                        break
             else:
-                print(X[col].iloc[0], 'FUCK')
-                print(type(X[col].iloc[0]))
-            print(col, ': [', type_is, ']', sep='', end='\n')
-    print('\n\n')
-    flute
-    print(X.info())
+                if isinstance(X[col].iloc[0], (np.floating, float, type(0.1))):
+                    type_is = "float"
+                elif isinstance(X[col].iloc[0], (np.integer, int, type(1))) :
+                    type_is = "int"
 
-    response = requests.post('http://127.0.0.1:8000/predict', msg=X.iloc[0].to_json())
-    print(response.content)
+                else:
+                    print(X[col].iloc[0], 'FUCK')
+                    print(type(X[col].iloc[0]))
+                print(col, ': ', type_is, '', sep='', end='\n')
+        print('\n\n')
+
+    print(X.shape)
+    print(y.shape)
+
+    for i in range(0, len(X)):
+        data_0_dict = X.iloc[i].to_dict()
+
+        response = requests.post('http://127.0.0.1:8000/predict', json=data_0_dict)
+        print(response.content)
 
 
     flute
@@ -383,7 +399,7 @@ def main(need_fillna=False):
     # Start of deal with unbalance. #
     #################################
 
-    undersampling_needed = True
+    undersampling_needed = False
 
     if undersampling_needed:
             X_filled_undersampled,\

@@ -20,6 +20,8 @@ from sklearn.model_selection import ParameterGrid
 from collections import Counter
 from numpy import where
 from matplotlib import pyplot
+from sklearn.model_selection import cross_val_predict
+from sklearn.metrics import confusion_matrix
 
 # Pretreatment
 from sklearn.model_selection import KFold, StratifiedKFold
@@ -36,7 +38,6 @@ from lightgbm import LGBMClassifier
 import xgboost as xgb
 from sklearn.metrics import fbeta_score, make_scorer
 
-import shap
 
 @contextmanager
 def timer(title):
@@ -245,7 +246,7 @@ def TSNE_visu_fct(X_tsne, y_cat_num, labels, score=None, method=None):
 
     ax = fig.add_subplot(121)
     scatter = ax.scatter(X_tsne[:,0],X_tsne[:,1], c=y_cat_num, cmap='Set1')
-    ax.legend(handles=scatter.legend_elements()[0], labels=l_cat, loc="best", title="Catégorie")
+    ax.legend(handles=scatter.legend_elements()[0], labels=labels, loc="best", title="Catégorie")
 
     title_1 = 'Réprésentation des articles par catégories réelles'
 
@@ -350,7 +351,7 @@ def main(need_fillna=True):
     # Start of deal with unbalance. #
     #################################
 
-    undersampling_needed = True
+    undersampling_needed = False
 
     if undersampling_needed:
             X_filled_undersampled,\
@@ -373,7 +374,6 @@ def main(need_fillna=True):
           X_filled_undersampled.shape,
           "  y : ",
           y_filled_undersampled.shape,
-          y_filled_undersampled.shape,
           sep="")
 
     #############################
@@ -395,6 +395,10 @@ def main(need_fillna=True):
                                         scoring='roc_auc'))
     results['SVC'] = SVC_score
     print("SVC default score is : ", SVC_score)
+    print("Confusion matrix : ")
+    y_pred = cross_val_predict(SVC_clf, X_filled_undersampled, y_filled_undersampled, cv=5)
+    conf_mat = confusion_matrix(y_filled_undersampled, y_pred)
+    print(conf_mat, end="\n\n")
 
     ##############################################################
     ## XGBClassifier
@@ -407,18 +411,26 @@ def main(need_fillna=True):
                                          scoring='roc_auc'))
     results['XGB'] = XGBC_score
     print("XGB default score is : ", XGBC_score)
+    print("Confusion matrix : ")
+    y_pred = cross_val_predict(XGBC_clf, X_filled_undersampled, y_filled_undersampled, cv=5)
+    conf_mat = confusion_matrix(y_filled_undersampled, y_pred)
+    print(conf_mat, end="\n\n")
 
     ##############################################################
     ## LGBMClassifier (all datas)
 
-    LGBMC_clf = LGBMClassifier()
-    LGBMC_all_datas_score = np.mean(cross_val_score(LGBMC_clf,
+    LGBMC_all_datas_clf = LGBMClassifier()
+    LGBMC_all_datas_score = np.mean(cross_val_score(LGBMC_all_datas_clf,
                                                     X,
                                                     y,
                                                     cv=5,
                                                     scoring='roc_auc'))
     results['LGBMC all datas'] = LGBMC_all_datas_score
-    print("Light GBMC default score is : ", LGBMC_all_datas_score)
+    print("Light GBMC default with all datas score is : ", LGBMC_all_datas_score)
+    print("Confusion matrix : ")
+    y_pred = cross_val_predict(LGBMC_all_datas_clf, X, y, cv=5)
+    conf_mat = confusion_matrix(y, y_pred)
+    print(conf_mat, end="\n\n")
 
     ##############################################################
     ## LGBMClassifier (undersampled datas)
@@ -430,7 +442,12 @@ def main(need_fillna=True):
                                                     cv=5,
                                                     scoring='roc_auc'))
     results['LGBM'] = LGBMC_score
-    print("Light GBM default score is : ", LGBMC_score)
+    print("Light GBM default with undersampled data score is : ", LGBMC_score)
+    print("Confusion matrix : ")
+    y_pred = cross_val_predict(LGBMC_clf, X_filled_undersampled, y_filled_undersampled, cv=5)
+    conf_mat = confusion_matrix(y_filled_undersampled, y_pred)
+    print(conf_mat, end="\n\n")
+
 
     best_method = max(results, key=results.get)
 
@@ -439,29 +456,29 @@ def main(need_fillna=True):
     if best_method == "SVC":
         with timer("SVC Classifier"):
             score_and_params = SVCCla_train(X_filled_undersampled, y_filled_undersampled)
+            print(score_and_params)
             SVC_model = SVC(**score_and_params["params"])
             SVC_model.fit(X_filled_undersampled, y_filled_undersampled)
             with open('SVC_model.pkl', 'wb') as f:
                 pickle.dump(SVC_model, f)
-            model = SVC_model
 
     elif best_method == "XGB":
         with timer("XGB Classifier"):
             score_and_params = XGBClassifier_train(X_filled_undersampled, y_filled_undersampled)
+            print(score_and_params)
             XGB_model = SVC(**score_and_params["params"])
             XGB_model.fit(X_filled_undersampled, y_filled_undersampled)
             with open('XGB_model.pkl', 'wb') as f:
                 pickle.dump(XGB_model, f)
-            model = XGB_model
 
     elif best_method == "LGBM":
         with timer("LGBMClassifier"):
             score_and_params = LGBMCla_train(X_filled_undersampled, y_filled_undersampled)
+            print(score_and_params)
             LGBM_model= LGBMClassifier(**score_and_params["params"])
             LGBM_model.fit(X_filled_undersampled, y_filled_undersampled)
-            with open('models/LGBM_model.pkl', 'wb') as f:
+            with open('models/LGBM_model_truncated.pkl', 'wb') as f:
                 pickle.dump(LGBM_model, f)
-            model = LGBM_model
 
     elif best_method == "LGBMC all datas":
         with timer("LGBMClassifier all datas"):
@@ -471,14 +488,6 @@ def main(need_fillna=True):
             LGBM_model.fit(X_filled_undersampled, y_filled_undersampled)
             with open('models/LGBM_model.pkl', 'wb') as f:
                 pickle.dump(LGBM_model, f)
-            model = LGBM_model
-
-
-    partition_explainer = shap.PartitionExplainer(model, X_filled_undersampled)
-
-    shap.bar_plot(partition_explainer.shap_values(X_filled_undersampled[0]),
-              feature_names=df.columns,
-              max_display=12)
 
 
 if __name__ == "__main__":
