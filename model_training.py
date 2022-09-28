@@ -38,6 +38,7 @@ from sklearn.ensemble import GradientBoostingClassifier
 from lightgbm import LGBMClassifier
 import xgboost as xgb
 from sklearn.metrics import fbeta_score, make_scorer
+import shap
 
 
 @contextmanager
@@ -451,13 +452,13 @@ def main(need_fillna=True):
     y_train_filled_undersampled, \
     y_test_filled_undersampled = train_test_split(X_filled_undersampled, y_filled_undersampled,
                                                   test_size=20/len(X_filled_undersampled),
-                                                  random_state=42)
+                                                  random_state=0)
     X_train_undersampled, \
     X_test_undersampled, \
     y_train_undersampled, \
     y_test_undersampled = train_test_split(X_undersampled, y_undersampled,
                                            test_size=20/len(X_undersampled),
-                                           random_state=42)
+                                           random_state=0)
 
     # Save test data
     with open("dataframes/X_test_filled_undersampled.pkl", "wb") as f:
@@ -480,72 +481,71 @@ def main(need_fillna=True):
     ##############################################################
     ## SVC
 
-    if 0:
-        SVC_clf = SVC()
-        SVC_score = np.mean(cross_val_score(SVC_clf,
-                                            X_train_filled_undersampled,
-                                            y_train_filled_undersampled,
-                                            cv=5,
-                                            scoring=make_scorer(my_metrics)))
-        results['SVC'] = SVC_score
-        print("SVC default score is : ", SVC_score)
-        print("Confusion matrix : ")
-        y_pred = cross_val_predict(SVC_clf, X_train_filled_undersampled, y_train_filled_undersampled, cv=5)
-        conf_mat = confusion_matrix(y_train_filled_undersampled, y_pred)
-        print(conf_mat, end="\n\n")
+    SVC_clf = SVC()
+    SVC_score = np.mean(cross_val_score(SVC_clf,
+                                        X_train_filled_undersampled,
+                                        y_train_filled_undersampled,
+                                        cv=5,
+                                        scoring=make_scorer(my_metrics)))
+    results['SVC'] = SVC_score
+    print("SVC default score is : ", SVC_score)
+    print("Confusion matrix : ")
+    y_pred = cross_val_predict(SVC_clf, X_train_filled_undersampled, y_train_filled_undersampled, cv=5)
+    conf_mat = confusion_matrix(y_train_filled_undersampled, y_pred)
+    print(conf_mat, end="\n\n")
 
-        ##############################################################
-        ## XGBClassifier
+    ##############################################################
+    ## XGBClassifier
 
-        XGBC_clf = xgb.XGBClassifier()
-        XGBC_score = np.mean(cross_val_score(XGBC_clf,
-                                             X_train_filled_undersampled,
-                                             y_train_filled_undersampled,
-                                             cv=5,
-                                             scoring=make_scorer(my_metrics)))
-        results['XGB'] = XGBC_score
-        print("XGB default score is : ", XGBC_score)
-        print("Confusion matrix : ")
-        y_pred = cross_val_predict(XGBC_clf, X_train_filled_undersampled, y_train_filled_undersampled, cv=5)
-        conf_mat = confusion_matrix(y_train_filled_undersampled, y_pred)
-        print(conf_mat, end="\n\n")
+    XGBC_clf = xgb.XGBClassifier()
+    XGBC_score = np.mean(cross_val_score(XGBC_clf,
+                                         X_train_filled_undersampled,
+                                         y_train_filled_undersampled,
+                                         cv=5,
+                                         scoring=make_scorer(my_metrics)))
+    results['XGB'] = XGBC_score
+    print("XGB default score is : ", XGBC_score)
+    print("Confusion matrix : ")
+    y_pred = cross_val_predict(XGBC_clf, X_train_filled_undersampled, y_train_filled_undersampled, cv=5)
+    conf_mat = confusion_matrix(y_train_filled_undersampled, y_pred)
+    print(conf_mat, end="\n\n")
 
-        ##############################################################
-        ## LGBMClassifier (all datas)
+    ##############################################################
+    ## LGBMClassifier (all datas)
 
-        LGBMC_all_datas_clf = LGBMClassifier()
-        LGBMC_all_datas_score = np.mean(cross_val_score(LGBMC_all_datas_clf,
-                                                        X_train_undersampled,
-                                                        y_train_undersampled,
-                                                        cv=5,
-                                                        scoring=make_scorer(my_metrics)))
-        results['LGBMC all datas'] = LGBMC_all_datas_score
-        print("Light GBMC default with all datas score is : ", LGBMC_all_datas_score)
-        print("Confusion matrix : ")
-        y_pred = cross_val_predict(LGBMC_all_datas_clf, X_train_undersampled, y_train_undersampled, cv=5)
-        conf_mat = confusion_matrix(y_train_undersampled, y_pred)
-        print(conf_mat, end="\n\n")
+    LGBMC_all_datas_clf = LGBMClassifier()
+    LGBMC_all_datas_score = np.mean(cross_val_score(LGBMC_all_datas_clf,
+                                                    X_train_undersampled,
+                                                    y_train_undersampled,
+                                                    cv=5,
+                                                    scoring=make_scorer(my_metrics)))
+    results['LGBMC all datas'] = LGBMC_all_datas_score
+    print("Light GBMC default with all datas score is : ", LGBMC_all_datas_score)
+    print("Confusion matrix : ")
+    y_pred = cross_val_predict(LGBMC_all_datas_clf, X_train_undersampled, y_train_undersampled, cv=5)
+    conf_mat = confusion_matrix(y_train_undersampled, y_pred)
+    print(conf_mat, end="\n\n")
 
-        ##############################################################
-        ## LGBMClassifier (undersampled datas)
+    ##############################################################
+    ## LGBMClassifier (undersampled datas)
 
-        LGBMC_clf = LGBMClassifier()
-        LGBMC_score = np.mean(cross_val_score(LGBMC_clf,
-                                              X_train_filled_undersampled,
-                                              y_train_filled_undersampled,
-                                              cv=5,
-                                              scoring=make_scorer(my_metrics)))
-        results['LGBM'] = LGBMC_score
-        print("Light GBM default with undersampled data score is : ", LGBMC_score)
-        print("Confusion matrix : ")
-        y_pred = cross_val_predict(LGBMC_clf, X_train_filled_undersampled, y_train_filled_undersampled, cv=5)
-        conf_mat = confusion_matrix(y_train_filled_undersampled, y_pred)
-        print(conf_mat, end="\n\n")
+    LGBMC_clf = LGBMClassifier()
+    LGBMC_score = np.mean(cross_val_score(LGBMC_clf,
+                                          X_train_filled_undersampled,
+                                          y_train_filled_undersampled,
+                                          cv=5,
+                                          scoring=make_scorer(my_metrics)))
+    results['LGBM'] = LGBMC_score
+    print("Light GBM default with undersampled data score is : ", LGBMC_score)
+    print("Confusion matrix : ")
+    y_pred = cross_val_predict(LGBMC_clf, X_train_filled_undersampled, y_train_filled_undersampled, cv=5)
+    conf_mat = confusion_matrix(y_train_filled_undersampled, y_pred)
+    print(conf_mat, end="\n\n")
 
 
-        best_method = max(results, key=results.get)
+    best_method = max(results, key=results.get)
 
-        print(results)
+    print(results)
     best_method = "LGBMC all datas"
 
     if best_method == "SVC":
@@ -556,6 +556,7 @@ def main(need_fillna=True):
             SVC_model.fit(X_train_filled_undersampled, y_train_filled_undersampled)
             with open('SVC_model.pkl', 'wb') as f:
                 pickle.dump(SVC_model, f)
+            model = SVC_model
 
     elif best_method == "XGB":
         with timer("XGB Classifier"):
@@ -565,15 +566,17 @@ def main(need_fillna=True):
             XGB_model.fit(X_train_filled_undersampled, y_train_filled_undersampled)
             with open('XGB_model.pkl', 'wb') as f:
                 pickle.dump(XGB_model, f)
+            model = XGB_model
 
     elif best_method == "LGBM":
         with timer("LGBMClassifier"):
             score_and_params = LGBMCla_train(X_train_filled_undersampled, y_train_filled_undersampled)
             print(score_and_params)
-            LGBM_model= LGBMClassifier(**score_and_params["params"])
-            LGBM_model.fit(X_train_filled_undersampled, y_train_filled_undersampled)
+            LGBM_model_trunc= LGBMClassifier(**score_and_params["params"])
+            LGBM_model_trunc.fit(X_train_filled_undersampled, y_train_filled_undersampled)
             with open('models/LGBM_model_truncated.pkl', 'wb') as f:
-                pickle.dump(LGBM_model, f)
+                pickle.dump(LGBM_model_trunc, f)
+            model = LGBM_model_trunc
 
     elif best_method == "LGBMC all datas":
         with timer("LGBMClassifier all datas"):
@@ -583,8 +586,27 @@ def main(need_fillna=True):
             LGBM_model.fit(X_train_undersampled, y_train_undersampled)
             with open('models/LGBM_model.pkl', 'wb') as f:
                 pickle.dump(LGBM_model, f)
+            model = LGBM_model
 
-    print('Happy ending :)')
+    # USE SHAP TO EXPLAIN THE MODEL
+
+    if need_to_rain_explainer = False:
+        # Fit the explainer with 300 sample. (The full df is way too big to use it all in SHAP.)
+        explainer = shap.KernelExplainer(LGBM_model.predict, shap.sample(X, 300))
+        # Save the explainer
+        with open("models/explainer.pkl", "wb") as f:
+            pickle.dump(explainer, f)
+
+        # Use the explainer for the 20 test samples.
+        shap_dict = dict()
+        for client_index in X_test_undersampled['index']:
+            shap_dict[client_index] = explainer.shap_values(X_test_undersampled.loc[client_index])
+
+        with open("dataframes/shape_dict.pkl", "wb") as f:
+            pickle.dump(shap_dict, f)0
+    else:
+        with open('models/explainer.pkl', 'rb') as f:
+            explainer = pickle.load(f)
 
 if __name__ == "__main__":
     main(need_fillna=False)
