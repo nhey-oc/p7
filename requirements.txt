@@ -2,6 +2,3 @@ pandas
 streamlit
 uvicorn
 shap
-json
-pickle
-requests
