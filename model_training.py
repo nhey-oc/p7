@@ -22,6 +22,7 @@ from numpy import where
 from matplotlib import pyplot
 from sklearn.model_selection import cross_val_predict
 from sklearn.metrics import confusion_matrix
+from sklearn.impute import SimpleImputer
 
 # Pretreatment
 from sklearn.model_selection import KFold, StratifiedKFold
@@ -97,11 +98,47 @@ def extract_x_y(df):
     return X, y
 
 
+def my_metrics(y, y_preds):
+    """
+
+    """
+    scores = list()
+
+    y = y.tolist()
+    y_preds = y_preds.tolist()
+
+    for i in range(0, len(y_preds)):
+        # Case where we accept the loan and the client will repay.
+        # Conclusion : We earn some money from the interests.
+        # At the end of the loan, the bank earn approximatively 25% of the total amount,
+        # For 20 years duration, 1.5% interests.
+        # We admit here that we lost 75% of the amount if the client do not repay.
+        # Of corse, it's a pessimistic estimation.
+
+        if ( y_preds[i] == 0 ) & ( y[i] == 0 ):
+            scores.append(0.25)
+        # Case where we refuse the loan and we were right.
+        # No money movement
+        elif ( y_preds[i] == 1 ) & ( y[i] == 1 ):
+            scores.append(0.1)
+        # Case where we refuse the loan and we could accept it.
+        elif ( y_preds[i] == 1 ) & ( y[i] == 0 ):
+            scores.append(-0.1)
+        # Case where we refuse a loan but the client could repay.
+        # No money movement
+        elif ( y_preds[i] == 0 ) & ( y[i] == 1 ):
+            scores.append(-0.75)
+        # Case where we accept a loan and the client can't repay.
+        # Big consequences for the bank ! A lot of money lost.
+
+    return sum(scores)
+
+
 def LGBMCla_train(X, y, stratified = False, num_folds=2, need_fillna=True):
     # Preset the hyper-params.
     param_grid = ParameterGrid(
                         {
-                            'learning_rate': [0.1, 0.01, 0.001],
+                            'learning_rate': [0.2, 0.1, 0.05, 0.01],
                             # rf return an error with these parameters
                             # Afters some try, gbdt is the best. To reuse in full demonstration.
                             'boosting_type': ['gbdt'], #, 'dart', 'goss'],
@@ -113,14 +150,13 @@ def LGBMCla_train(X, y, stratified = False, num_folds=2, need_fillna=True):
 
                             # For params = {'boosting_type': 'gbdt', 'learning_rate': 0.1, 'max_depth': 10, 'metric': 'roc_auc', 'n_estimators': 100, 'n_jobs': 4, 'num_leaves': 31, 'objective': 'binary'} -> ROC AUC score : [0.78435043 0.78482766 0.77777107 0.78458169 0.78171164]
                             # gbdt best
-                            'metric': ['roc_auc'],
                             'num_leaves': [10, 20, 31],
-                            'max_depth': [-1, 5, 10],
+                            'max_depth': [2, 5, 10],
                             # After some try, we see that n_iterations = 20 is not enough and 500 seems to overfit.
                             # Set it to initial value to gain some time.
-                            'n_estimators': [50, 100, 200],
+                            'n_estimators': [100, 1000, 5000],
                             'objective': ['binary'],
-                            'n_jobs': [4]
+                            'n_jobs': [8]
                         }
                     )
 
@@ -133,10 +169,11 @@ def LGBMCla_train(X, y, stratified = False, num_folds=2, need_fillna=True):
     for params in param_grid:
         i+=1
         print(i, "/", nb_comb, sep="")
+        print(params)
         # Declare the model
         clf = LGBMClassifier(**params)
 
-        score = np.mean(cross_val_score(clf, X, y, cv=5, scoring='roc_auc'))
+        score = np.mean(cross_val_score(clf, X, y, cv=5, scoring=make_scorer(my_metrics)))
 
         LGBMC_dic[str(params)] = score
         if score > best_score:
@@ -170,7 +207,7 @@ def SVCCla_train(X, y):
         # Declare the model
         clf = SVC(**params)
 
-        score = np.mean(cross_val_score(clf, X, y, cv=5, scoring='roc_auc'))
+        score = np.mean(cross_val_score(clf, X, y, cv=5, scoring=make_scorer(my_metrics)))
         SVC_dic[str(params)] = score
 
         if score > best_score:
@@ -209,7 +246,7 @@ def XGBClassifier_train(X, y):
         # Declare the model
         xgb_cl = xgb.XGBClassifier(**params)
 
-        score = np.mean(cross_val_score(xgb_cl, X, y, cv=5, scoring=fb_score))
+        score = np.mean(cross_val_score(xgb_cl, X, y, cv=5, scoring=make_scorer(my_metrics)))
         XGB_dic[str(params)] = score
 
         if score > best_score:
@@ -261,6 +298,23 @@ def TSNE_visu_fct(X_tsne, y_cat_num, labels, score=None, method=None):
     plt.title(title_2)
 
     plt.show()
+
+
+def my_simple_imputer(df_init):
+    df = df_init.copy()
+    for col in df.columns:
+        med = median(df[~df[col].isna()][col].to_list())
+        df[col].fillna(med, inplace=True)
+    return df
+
+
+def custom_random_undersampling(X, y):
+    values = y.value_counts()
+
+    one_index = y[y == 1].sample(min(values)).index.tolist()
+    zero_index = y[y == 0].sample(min(values)).index.tolist()
+
+    return X.loc[one_index+zero_index], y.loc[one_index+zero_index]
 
 
 def random_undersampling(X, y):
@@ -334,6 +388,7 @@ def main(need_fillna=True):
 
     if need_fillna:
         with timer("Fillna"):
+            # This function use KNN Imputer but remove columns with too much NaN.
             df_filled = fillna_fun(df, threshold=25)
             df_filled.to_pickle('dataframes/df_fillna.pkl')
     else:
@@ -358,10 +413,18 @@ def main(need_fillna=True):
             y_filled_undersampled = proceed_to_undersample(X_filled,
                                                                   y_filled,
                                                                   undersampling_method="random")
+
+            X_undersampled, y_undersampled = custom_random_undersampling(X, y)
+
             with open('dataframes/X_filled_undersampled.pkl', 'wb') as f:
                 pickle.dump(X_filled_undersampled, f)
             with open('dataframes/y_filled_undersampled.pkl', 'wb') as f:
                 pickle.dump(y_filled_undersampled, f)
+
+            with open('dataframes/X_undersampled.pkl', 'wb') as f:
+                pickle.dump(X_undersampled, f)
+            with open('dataframes/y_undersampled.pkl', 'wb') as f:
+                pickle.dump(y_undersampled, f)
 
     else:
         with open('dataframes/X_filled_random_undersampled.pkl', 'rb') as f:
@@ -369,12 +432,42 @@ def main(need_fillna=True):
         with open('dataframes/y_filled_random_undersampled.pkl', 'rb') as f:
             y_filled_undersampled = pickle.load(f)
 
+        with open('dataframes/X_undersampled.pkl', 'rb') as f:
+            X_undersampled = pickle.load(f)
+        with open('dataframes/y_undersampled.pkl', 'rb') as f:
+            y_undersampled = pickle.load(f)
+
 
     print("New shape with undersampling method is : X : ",
           X_filled_undersampled.shape,
           "  y : ",
           y_filled_undersampled.shape,
           sep="")
+
+    ## Keep 20 sample for dashboard test condition.
+
+    X_train_filled_undersampled, \
+    X_test_filled_undersampled, \
+    y_train_filled_undersampled, \
+    y_test_filled_undersampled = train_test_split(X_filled_undersampled, y_filled_undersampled,
+                                                  test_size=20/len(X_filled_undersampled),
+                                                  random_state=42)
+    X_train_undersampled, \
+    X_test_undersampled, \
+    y_train_undersampled, \
+    y_test_undersampled = train_test_split(X_undersampled, y_undersampled,
+                                           test_size=20/len(X_undersampled),
+                                           random_state=42)
+
+    # Save test data
+    with open("dataframes/X_test_filled_undersampled.pkl", "wb") as f:
+        pickle.dump(X_test_filled_undersampled, f)
+    with open("dataframes/y_test_filled_undersampled.pkl", "wb") as f:
+        pickle.dump(y_test_filled_undersampled, f)
+    with open("dataframes/X_test_undersampled.pkl", "wb") as f:
+        pickle.dump(X_test_undersampled, f)
+    with open("dataframes/y_test_undersampled.pkl", "wb") as f:
+        pickle.dump(y_test_undersampled, f)
 
     #############################
     # Start of training models. #
@@ -387,108 +480,111 @@ def main(need_fillna=True):
     ##############################################################
     ## SVC
 
-    SVC_clf = SVC()
-    SVC_score = np.mean(cross_val_score(SVC_clf,
-                                        X_filled_undersampled,
-                                        y_filled_undersampled,
-                                        cv=5,
-                                        scoring='roc_auc'))
-    results['SVC'] = SVC_score
-    print("SVC default score is : ", SVC_score)
-    print("Confusion matrix : ")
-    y_pred = cross_val_predict(SVC_clf, X_filled_undersampled, y_filled_undersampled, cv=5)
-    conf_mat = confusion_matrix(y_filled_undersampled, y_pred)
-    print(conf_mat, end="\n\n")
+    if 0:
+        SVC_clf = SVC()
+        SVC_score = np.mean(cross_val_score(SVC_clf,
+                                            X_train_filled_undersampled,
+                                            y_train_filled_undersampled,
+                                            cv=5,
+                                            scoring=make_scorer(my_metrics)))
+        results['SVC'] = SVC_score
+        print("SVC default score is : ", SVC_score)
+        print("Confusion matrix : ")
+        y_pred = cross_val_predict(SVC_clf, X_train_filled_undersampled, y_train_filled_undersampled, cv=5)
+        conf_mat = confusion_matrix(y_train_filled_undersampled, y_pred)
+        print(conf_mat, end="\n\n")
 
-    ##############################################################
-    ## XGBClassifier
+        ##############################################################
+        ## XGBClassifier
 
-    XGBC_clf = xgb.XGBClassifier()
-    XGBC_score = np.mean(cross_val_score(XGBC_clf,
-                                         X_filled_undersampled,
-                                         y_filled_undersampled,
-                                         cv=5,
-                                         scoring='roc_auc'))
-    results['XGB'] = XGBC_score
-    print("XGB default score is : ", XGBC_score)
-    print("Confusion matrix : ")
-    y_pred = cross_val_predict(XGBC_clf, X_filled_undersampled, y_filled_undersampled, cv=5)
-    conf_mat = confusion_matrix(y_filled_undersampled, y_pred)
-    print(conf_mat, end="\n\n")
+        XGBC_clf = xgb.XGBClassifier()
+        XGBC_score = np.mean(cross_val_score(XGBC_clf,
+                                             X_train_filled_undersampled,
+                                             y_train_filled_undersampled,
+                                             cv=5,
+                                             scoring=make_scorer(my_metrics)))
+        results['XGB'] = XGBC_score
+        print("XGB default score is : ", XGBC_score)
+        print("Confusion matrix : ")
+        y_pred = cross_val_predict(XGBC_clf, X_train_filled_undersampled, y_train_filled_undersampled, cv=5)
+        conf_mat = confusion_matrix(y_train_filled_undersampled, y_pred)
+        print(conf_mat, end="\n\n")
 
-    ##############################################################
-    ## LGBMClassifier (all datas)
+        ##############################################################
+        ## LGBMClassifier (all datas)
 
-    LGBMC_all_datas_clf = LGBMClassifier()
-    LGBMC_all_datas_score = np.mean(cross_val_score(LGBMC_all_datas_clf,
-                                                    X,
-                                                    y,
-                                                    cv=5,
-                                                    scoring='roc_auc'))
-    results['LGBMC all datas'] = LGBMC_all_datas_score
-    print("Light GBMC default with all datas score is : ", LGBMC_all_datas_score)
-    print("Confusion matrix : ")
-    y_pred = cross_val_predict(LGBMC_all_datas_clf, X, y, cv=5)
-    conf_mat = confusion_matrix(y, y_pred)
-    print(conf_mat, end="\n\n")
+        LGBMC_all_datas_clf = LGBMClassifier()
+        LGBMC_all_datas_score = np.mean(cross_val_score(LGBMC_all_datas_clf,
+                                                        X_train_undersampled,
+                                                        y_train_undersampled,
+                                                        cv=5,
+                                                        scoring=make_scorer(my_metrics)))
+        results['LGBMC all datas'] = LGBMC_all_datas_score
+        print("Light GBMC default with all datas score is : ", LGBMC_all_datas_score)
+        print("Confusion matrix : ")
+        y_pred = cross_val_predict(LGBMC_all_datas_clf, X_train_undersampled, y_train_undersampled, cv=5)
+        conf_mat = confusion_matrix(y_train_undersampled, y_pred)
+        print(conf_mat, end="\n\n")
 
-    ##############################################################
-    ## LGBMClassifier (undersampled datas)
+        ##############################################################
+        ## LGBMClassifier (undersampled datas)
 
-    LGBMC_clf = LGBMClassifier()
-    LGBMC_score = np.mean(cross_val_score(LGBMC_clf,
-                                                    X_filled_undersampled,
-                                                    y_filled_undersampled,
-                                                    cv=5,
-                                                    scoring='roc_auc'))
-    results['LGBM'] = LGBMC_score
-    print("Light GBM default with undersampled data score is : ", LGBMC_score)
-    print("Confusion matrix : ")
-    y_pred = cross_val_predict(LGBMC_clf, X_filled_undersampled, y_filled_undersampled, cv=5)
-    conf_mat = confusion_matrix(y_filled_undersampled, y_pred)
-    print(conf_mat, end="\n\n")
+        LGBMC_clf = LGBMClassifier()
+        LGBMC_score = np.mean(cross_val_score(LGBMC_clf,
+                                              X_train_filled_undersampled,
+                                              y_train_filled_undersampled,
+                                              cv=5,
+                                              scoring=make_scorer(my_metrics)))
+        results['LGBM'] = LGBMC_score
+        print("Light GBM default with undersampled data score is : ", LGBMC_score)
+        print("Confusion matrix : ")
+        y_pred = cross_val_predict(LGBMC_clf, X_train_filled_undersampled, y_train_filled_undersampled, cv=5)
+        conf_mat = confusion_matrix(y_train_filled_undersampled, y_pred)
+        print(conf_mat, end="\n\n")
 
 
-    best_method = max(results, key=results.get)
+        best_method = max(results, key=results.get)
 
-    print(results)
+        print(results)
+    best_method = "LGBMC all datas"
 
     if best_method == "SVC":
         with timer("SVC Classifier"):
-            score_and_params = SVCCla_train(X_filled_undersampled, y_filled_undersampled)
+            score_and_params = SVCCla_train(X_train_filled_undersampled, y_train_filled_undersampled)
             print(score_and_params)
             SVC_model = SVC(**score_and_params["params"])
-            SVC_model.fit(X_filled_undersampled, y_filled_undersampled)
+            SVC_model.fit(X_train_filled_undersampled, y_train_filled_undersampled)
             with open('SVC_model.pkl', 'wb') as f:
                 pickle.dump(SVC_model, f)
 
     elif best_method == "XGB":
         with timer("XGB Classifier"):
-            score_and_params = XGBClassifier_train(X_filled_undersampled, y_filled_undersampled)
+            score_and_params = XGBClassifier_train(X_train_filled_undersampled, y_train_filled_undersampled)
             print(score_and_params)
             XGB_model = SVC(**score_and_params["params"])
-            XGB_model.fit(X_filled_undersampled, y_filled_undersampled)
+            XGB_model.fit(X_train_filled_undersampled, y_train_filled_undersampled)
             with open('XGB_model.pkl', 'wb') as f:
                 pickle.dump(XGB_model, f)
 
     elif best_method == "LGBM":
         with timer("LGBMClassifier"):
-            score_and_params = LGBMCla_train(X_filled_undersampled, y_filled_undersampled)
+            score_and_params = LGBMCla_train(X_train_filled_undersampled, y_train_filled_undersampled)
             print(score_and_params)
             LGBM_model= LGBMClassifier(**score_and_params["params"])
-            LGBM_model.fit(X_filled_undersampled, y_filled_undersampled)
+            LGBM_model.fit(X_train_filled_undersampled, y_train_filled_undersampled)
             with open('models/LGBM_model_truncated.pkl', 'wb') as f:
                 pickle.dump(LGBM_model, f)
 
     elif best_method == "LGBMC all datas":
         with timer("LGBMClassifier all datas"):
-            score_and_params = LGBMCla_train(X, y)
+            score_and_params = LGBMCla_train(X_train_undersampled, y_train_undersampled)
             print(score_and_params)
             LGBM_model= LGBMClassifier(**score_and_params["params"])
-            LGBM_model.fit(X_filled_undersampled, y_filled_undersampled)
+            LGBM_model.fit(X_train_undersampled, y_train_undersampled)
             with open('models/LGBM_model.pkl', 'wb') as f:
                 pickle.dump(LGBM_model, f)
 
+    print('Happy ending :)')
 
 if __name__ == "__main__":
     main(need_fillna=False)

@@ -4,3 +4,10 @@ datas/
 dataframes/
 models/
 P7_env/
+explainer.pkl
+explainer.ipynb
+feature_importance_global_explainer.png
+list_test.pkl
+model_training_some_try.py
+shap_local_explainer.png
+trainer.ipynb
