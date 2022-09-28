@@ -3,7 +3,5 @@ streamlit
 uvicorn
 matplotlib
 requests
-json
 pickle
 shap
-plotly
